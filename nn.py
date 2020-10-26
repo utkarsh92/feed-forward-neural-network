@@ -271,6 +271,7 @@ def main():
 	for i in range(len(net.biases)):
 		print(net.biases[i].shape)
 	# print(net.biases)
+	print("lol")
 	sys.exit()
 
 

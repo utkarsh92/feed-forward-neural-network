@@ -1,3 +1,4 @@
+from operator import ne
 import sys
 import os
 import math
@@ -7,6 +8,7 @@ import pandas as pd
 np.random.seed(42)
 
 NUM_FEATS = 90
+
 
 class Net(object):
 	'''
@@ -19,26 +21,28 @@ class Net(object):
 
 		Parameters
 		----------
-			num_layers : Number of HIDDEN layers.
-			num_units : Number of units in each Hidden layer.
+				num_layers : Number of HIDDEN layers.
+				num_units : Number of units in each Hidden layer.
 		'''
-		self.biases = []
 		self.weights = []
+		self.biases = []
+		self.outs = []
+		self.relus = []
 
 		for i in range(num_layers + 1):
 			if i == 0:
-				#weight after input layer
-				mat = np.random.uniform(-1,1,(NUM_FEATS,num_units))
-				bias = np.random.uniform(-1,1,num_units)
+				# first matrix
+				mat = np.random.uniform(-1, 1, (NUM_FEATS, num_units))
+				bias = np.random.uniform(-1, 1, num_units)
 			elif i == num_layers:
-				#weight before output layer
-				mat = np.random.uniform(-1,1,(num_units,1))
-				bias = np.random.uniform(-1,1,1)
+				# last matrix
+				mat = np.random.uniform(-1, 1, (num_units, 1))
+				bias = np.random.uniform(-1, 1, 1)
 			else:
-				#weights in b/w hidden layer
-				mat = np.random.uniform(-1,1,(num_units,num_units))
-				bias = np.random.uniform(-1,1,num_units)
-			
+				# hidden layer matrices
+				mat = np.random.uniform(-1, 1, (num_units, num_units))
+				bias = np.random.uniform(-1, 1, num_units)
+
 			self.weights.append(mat)
 			self.biases.append(bias)
 
@@ -48,25 +52,35 @@ class Net(object):
 		'''
 		Forward propagate the input X through the network,
 		and return the output.
-		
+
 		Parameters
 		----------
-			X : Input to the network, numpy array of shape m x d
+				X : Input to the network, numpy array of shape m x d
 		Returns
 		----------
-			y : Output of the network, numpy array of shape m x 1
+				y : Output of the network, numpy array of shape m x 1
 		'''
-		for i in range(len(self.weights)):
-			
+		self.outs = []
+		# self.outs.append(X)
+
+		count = len(self.weights)
+		for i in range(count):
 			if i == 0:
-				y_hat = np.matmul(X, self.weights[i]) + self.biases[i]
+				net = (X @ self.weights[i]) + self.biases[i]
 			else:
-				y_hat = np.matmul(y_hat, self.weights[i]) + self.biases[i]
+				net = (out @ self.weights[i]) + self.biases[i]
+			
+			if i != count - 1:
+				out = np.maximum(net, 0)
+			else:
+				out = np.array(net)
+			self.outs.append(out)
+			relu = np.where(net > 0, 1, 0)
+			self.relus.append(relu)
 
-			y_hat = np.where(y_hat<0,0,y_hat)
-
-		y_hat = y_hat.astype(int)
-		y_hat = y_hat.clip(min=1922,max=2011)
+		y_hat = out.astype(int)
+		# y_hat = y_hat.clip(min=1922, max=2011)
+		# self.outs[-1] = y_hat
 		return y_hat
 
 	def backward(self, X, y, lamda):
@@ -76,21 +90,48 @@ class Net(object):
 
 		Parameters
 		----------
-			X : Input to the network, numpy array of shape m x d
-			y : Output of the network, numpy array of shape m x 1
-			lamda : Regularization parameter.
+				X : Input to the network, numpy array of shape m x d
+				y : Output of the network, numpy array of shape m x 1
+				lamda : Regularization parameter.
 
 		Returns
 		----------
-			del_W : derivative of loss w.r.t. all weight values (a list of matrices).
-			del_b : derivative of loss w.r.t. all bias values (a list of vectors).
+				del_W : derivative of loss w.r.t. all weight values (a list of matrices).
+				del_b : derivative of loss w.r.t. all bias values (a list of vectors).
 
 		Hint: You need to do a forward pass before performing bacward pass.
 		'''
 		del_W = []
 		del_b = []
+		m = X.shape[0]
 
-		return
+		#dL/dw = [2(out3 - y)*out2 / m].T + 2*lamda*w3
+
+		t1 = 2*(self.outs[-1] - y)
+
+		dW = t1 * self.outs[-2]
+		dW = np.sum(dW, axis=0) / m
+		dW = dW.T + 2*lamda*self.weights[-1]
+		del_W.append(dW)
+
+		for i in range(len(self.weights)-2, 0, -1):
+			if i == 0:
+				temp = t1 @ X
+			else:
+				temp = t1 @ self.outs[i-1]
+
+			t2 = None
+			for j in range(i+1, len(self.weights)):
+				if t2 == None:
+					t2 = self.weights[j]
+				else:
+					t2 = t2 @ self.weights[j]
+			
+			temp = temp.T @ t2.T
+			temp = temp + 2*lamda*self.weights[i]
+			del_W.append(temp)
+
+		return del_W, del_b
 
 
 class Optimizer(object):
@@ -108,18 +149,26 @@ class Optimizer(object):
 		Hint: You can use the class members to track various states of the
 		optimizer.
 		'''
+		self.lr = learning_rate
 		return
 
 	def step(self, weights, biases, delta_weights, delta_biases):
 		'''
 		Parameters
 		----------
-			weights: Current weights of the network.
-			biases: Current biases of the network.
-			delta_weights: Gradients of weights with respect to loss.
-			delta_biases: Gradients of biases with respect to loss.
+				weights: Current weights of the network.
+				biases: Current biases of the network.
+				delta_weights: Gradients of weights with respect to loss.
+				delta_biases: Gradients of biases with respect to loss.
 		'''
-		return
+		new_weights = []
+		new_biases = []
+
+		for i in range(len(weights)):
+			new_weights.append(weights[i] - self.lr * delta_weights[i])
+			new_biases.append(biases[i] - self.lr * delta_biases[i])
+
+		return new_weights, new_biases
 
 
 def loss_mse(y, y_hat):
@@ -128,15 +177,16 @@ def loss_mse(y, y_hat):
 
 	Parameters
 	----------
-		y : targets, numpy array of shape m x 1
-		y_hat : predictions, numpy array of shape m x 1
+			y : targets, numpy array of shape m x 1
+			y_hat : predictions, numpy array of shape m x 1
 
 	Returns
 	----------
-		MSE loss between y and y_hat.
+			MSE loss between y and y_hat.
 	'''
-	mse_loss = np.mean(np.power(y_hat-y,2))
+	mse_loss = np.mean(np.power(y_hat - y, 2))
 	return mse_loss
+
 
 def loss_regularization(weights, biases):
 	'''
@@ -144,12 +194,13 @@ def loss_regularization(weights, biases):
 
 	Parameters
 	----------
-		weights and biases of the network.
+			weights and biases of the network.
 
 	Returns
 	----------
-		l2 regularization
+			l2 regularization
 	'''
+	#might be wrong
 	l2_reg = 0
 	for i in range(len(weights)):
 		l2_reg += np.sum(np.power(weights[i], 2))
@@ -157,22 +208,25 @@ def loss_regularization(weights, biases):
 
 	return l2_reg
 
+
 def loss_fn(y, y_hat, weights, biases, lamda):
 	'''
 	Compute loss =  loss_mse(..) + lamda * loss_regularization(..)
 
 	Parameters
 	----------
-		y : targets, numpy array of shape m x 1
-		y_hat : predictions, numpy array of shape m x 1
-		weights and biases of the network
-		lamda: Regularization parameter
+			y : targets, numpy array of shape m x 1
+			y_hat : predictions, numpy array of shape m x 1
+			weights and biases of the network
+			lamda: Regularization parameter
 
 	Returns
 	----------
-		l2 regularization loss 
+			l2 regularization loss
 	'''
-	return
+	loss = loss_mse(y, y_hat) + lamda * loss_regularization(weights, biases)
+	return loss
+
 
 def rmse(y, y_hat):
 	'''
@@ -180,30 +234,55 @@ def rmse(y, y_hat):
 
 	Parameters
 	----------
-		y : targets, numpy array of shape m x 1
-		y_hat : predictions, numpy array of shape m x 1
+			y : targets, numpy array of shape m x 1
+			y_hat : predictions, numpy array of shape m x 1
 
 	Returns
 	----------
-		RMSE between y and y_hat.
+			RMSE between y and y_hat.
 	'''
-	return math.sqrt(loss_mse(y,y_hat))
+	return math.sqrt(loss_mse(y, y_hat))
 
 
 def train(
-	net, optimizer, lamda, batch_size, max_epochs,
-	train_input, train_target,
-	dev_input, dev_target
+		net, optimizer, lamda, batch_size, max_epochs,
+		train_input, train_target,
+		dev_input, dev_target
 ):
 	'''
 	In this function, you will perform following steps:
-		1. Run gradient descent algorithm for `max_epochs` epochs.
-		2. For each bach of the training data
-			1.1 Compute gradients
-			1.2 Update weights and biases using step() of optimizer.
-		3. Compute RMSE on dev data after running `max_epochs` epochs.
+			1. Run gradient descent algorithm for `max_epochs` epochs.
+			2. For each bach of the training data
+					1.1 Compute gradients
+					1.2 Update weights and biases using step() of optimizer.
+			3. Compute RMSE on dev data after running `max_epochs` epochs.
 	'''
+	epoch = 0
+	total = train_input.shape[0]
+	while(epoch < max_epochs):
+
+		start = 0
+		end = batch_size if batch_size < total else total
+		step = 0
+		while(step < 5):
+			print("TRAIL>>",epoch,":",step)
+			print("ins:",start,"to",end)
+			print("===========")
+			y_hat = net(train_input[start:end])
+			y = train_target[start:end]
+			# print(y_hat.shape)
+			# print(y.shape)
+			print("loss:", loss_mse(y, y_hat))
+
+
+			#next step
+			start = end
+			end = (end+batch_size) if (end+batch_size) < total else total
+			step += 1
+
+		sys.exit()
 	return
+
 
 def get_test_data_predictions(net, inputs):
 	'''
@@ -213,33 +292,40 @@ def get_test_data_predictions(net, inputs):
 
 	Parameters
 	----------
-		net : trained neural network
-		inputs : test input, numpy array of shape m x d
+			net : trained neural network
+			inputs : test input, numpy array of shape m x d
 
 	Returns
 	----------
-		predictions (optional): Predictions obtained from forward pass
-								on test data, numpy array of shape m x 1
+			predictions (optional): Predictions obtained from forward pass
+															on test data, numpy array of shape m x 1
 	'''
-	return
+	predictions = net(inputs)
+	return predictions
+
 
 def read_data():
 	'''
 	Read the train, dev, and test datasets
 	'''
 
-	train_input = pd.read_csv('dataset/train.csv', skipinitialspace=True).to_numpy()
-	train_target = train_input[:,0].astype(int)
-	train_input = train_input[:,1:].astype(float)
+	train_input = pd.read_csv(
+		'dataset/train.csv', skipinitialspace=True).to_numpy()
+	train_target = train_input[:, 0].astype(int)
+	train_target = train_target.reshape(train_target.shape[0], 1)
+	train_input = train_input[:, 1:].astype(float)
 	# train_target = pd.read_csv('dataset/train.csv', skipinitialspace=True, usecols=['label']).to_numpy()
 
-	dev_input = pd.read_csv('dataset/dev.csv', skipinitialspace=True).to_numpy()
-	dev_target = dev_input[:,0].astype(int)
-	dev_input = dev_input[:,1:].astype(float)
+	dev_input = pd.read_csv(
+		'dataset/dev.csv', skipinitialspace=True).to_numpy()
+	dev_target = dev_input[:, 0].astype(int)
+	dev_target = dev_target.reshape(dev_target.shape[0], 1)
+	dev_input = dev_input[:, 1:].astype(float)
 	# dev_target = pd.read_csv('dataset/dev.csv', skipinitialspace=True, usecols=['label']).to_numpy()
 
-	test_input = pd.read_csv('dataset/test.csv', skipinitialspace=True).to_numpy()
-	# test_input = test_input[:,1:].astype(float)
+	test_input = pd.read_csv(
+		'dataset/test.csv', skipinitialspace=True).to_numpy()
+	test_input = test_input.astype(float)
 
 	return train_input, train_target, dev_input, dev_target, test_input
 
@@ -253,29 +339,33 @@ def main():
 	learning_rate = 0.001
 	num_layers = 1
 	num_units = 64
-	lamda = 0.1 # Regularization Parameter
+	lamda = 0.1  # Regularization Parameter
 
+	print("reading dataset...")
 	train_input, train_target, dev_input, dev_target, test_input = read_data()
 	NUM_FEATS = train_input.shape[1]
-	# print(test_input.shape)
-	# print(train_input.shape[1])
+	# print(train_target.shape)
+	# print(train_target[0:3])
+	# print(train_input[0:3].shape)
 
+	print("initializing neural network...")
 	net = Net(num_layers, num_units)
 
-	print(len(net.weights))
-	for i in range(len(net.weights)):
-		print(net.weights[i].shape)
+	# print("done")
+	# print(len(net.weights))
+	# for i in range(len(net.weights)):
+	# 	print(net.weights[i].shape)
 	# print(net.weights)
 
-	print(len(net.biases))
-	for i in range(len(net.biases)):
-		print(net.biases[i].shape)
+	# print(len(net.biases))
+	# for i in range(len(net.biases)):
+	# 	print(net.biases[i].shape)
 	# print(net.biases)
-	print("lol")
-	sys.exit()
-
+	# print("lol")
+	# sys.exit()
 
 	optimizer = Optimizer(learning_rate)
+	print("training neural network...")
 	train(
 		net, optimizer, lamda, batch_size, max_epochs,
 		train_input, train_target,

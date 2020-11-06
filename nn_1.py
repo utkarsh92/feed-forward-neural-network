@@ -338,7 +338,7 @@ def get_test_data_predictions(net, inputs):
 					predictions (optional): Predictions obtained from forward pass
 																													on test data, numpy array of shape m x 1
 	'''
-	y_hat = net(inputs)[:,0]
+	y_hat = np.around(net(inputs)[:,0]).clip(min=1922, max=2011)
 	index = np.arange(len(y_hat)+1)[1:]
 	# print(y_hat.shape)
 	# print(index.shape)
@@ -381,9 +381,9 @@ def main():
 	batch_size = 128
 
 	learning_rate = 0.01
-	num_layers = 2
-	num_units = 128
-	lamda = 5.0  # Regularization Parameter
+	num_layers = 1
+	num_units = 64
+	lamda = 0.0  # Regularization Parameter
 
 	print("reading dataset...")
 	train_input, train_target, dev_input, dev_target, test_input = read_data()
@@ -439,7 +439,7 @@ def main():
 			train_input, train_target,
 			dev_input, dev_target
 		)
-	# get_test_data_predictions(net, test_input)
+	get_test_data_predictions(net, test_input)
 
 
 if __name__ == '__main__':

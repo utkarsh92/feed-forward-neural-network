@@ -1,7 +1,6 @@
 from operator import ne
 import sys
 import os
-import math
 import numpy as np
 import pandas as pd
 
@@ -111,12 +110,12 @@ class Net(object):
 
 		# dL/dw{i} = (out{i-1}.T @ ([temp{i-1} @ weight{i+1}.T] * R{i})) + 2*lamda*weight{i}
 
-		temp = (2/m)*(self.outs[-1] - y)
+		temp = (2)*(self.outs[-1] - y)
 		# temp = temp * self.relus[-1]	#no activation for last layer
-		dw = (self.outs[-2].T @ temp) + 2*lamda*self.weights[-1]
-		del_w.append(dw)
-		db = np.sum(temp, axis=0) + 2*lamda*self.biases[-1]
-		del_b.append(db)
+		dw = (self.outs[-2].T @ temp) + (2*lamda*self.weights[-1])
+		del_w.append(dw/m)
+		db = np.sum(temp, axis=0) + (2*lamda*self.biases[-1])
+		del_b.append(db/m)
 
 		for i in range(count-2, -1, -1):
 
@@ -127,10 +126,10 @@ class Net(object):
 			else:
 				dw = X.T @ temp
 
-			dw = dw + 2*lamda*self.weights[i]
-			del_w.append(dw)
-			db = np.sum(temp, axis=0) + 2*lamda*self.biases[i]
-			del_b.append(db)
+			dw = dw + (2*lamda*self.weights[i])
+			del_w.append(dw/m)
+			db = np.sum(temp, axis=0) + (2*lamda*self.biases[i])
+			del_b.append(db/m)
 
 		del_w.reverse()
 		del_b.reverse()
@@ -245,7 +244,7 @@ def rmse(y, y_hat):
 	----------
 					RMSE between y and y_hat.
 	'''
-	return math.sqrt(loss_mse(y, y_hat))
+	return np.sqrt(loss_mse(y, y_hat))
 
 
 def train(
@@ -277,6 +276,11 @@ def train(
 			X = train_input[start:end]
 			y_hat = net(X)
 			y = train_target[start:end]
+
+			if np.isnan(loss_mse(y, y_hat)):
+				print("NaN at", ins, "-",epoch)
+				epoch = max_epochs
+				break
 			# print(y_hat.shape)
 			# print(y.shape)
 			# print("loss:", loss_mse(y, y_hat))
@@ -289,21 +293,32 @@ def train(
 			end = (end+batch_size) if (end+batch_size) < total else total
 			ins += 1
 
-		print("++++++++++++++++++")
-		y_hat = net(train_input)
-		y = train_target
-		print("TRAIN LOSS:",rmse(y, y_hat))
-		y_hat = net(dev_input)
-		y = dev_target
-		print("DEV LOSS:",rmse(y, y_hat))
+		if(epoch %1==0):
+			# print("-------------")
+			# y_hat = net(train_input)
+			# y = train_target
+			# print("TRAIN LOSS:",rmse(y, y_hat))
+			# y_hat = net(dev_input)
+			# y = dev_target
+			# print("DEV LOSS:",rmse(y, y_hat))
+			pass
 
 		epoch += 1
 		# sys.exit()
 	
+	print("+++++++FINAL+++++++++++")
+	y_hat1 = np.around(net(train_input)).clip(min=1922, max=2011)
+	y1 = train_target
+	print("TRAIN LOSS:",rmse(y1, y_hat1))
+	y_hat2 = np.around(net(dev_input)).clip(min=1922, max=2011)
+	y2 = dev_target
+	print("DEV LOSS:",rmse(y2, y_hat2))
+	print("++++++++++++++++++")
 	print("train predictions")
-	print(np.hstack((train_target, net(train_input))))
+	print(np.hstack((y1, y_hat1)))
+	print("++++++++++++++++++")
 	print("dev predictions")
-	print(np.hstack((dev_target, net(dev_input))))
+	print(np.hstack((y2, y_hat2)))
 	return
 
 
@@ -323,8 +338,14 @@ def get_test_data_predictions(net, inputs):
 					predictions (optional): Predictions obtained from forward pass
 																													on test data, numpy array of shape m x 1
 	'''
-	predictions = net(inputs)
-	return predictions
+	y_hat = net(inputs)[:,0]
+	index = np.arange(len(y_hat)+1)[1:]
+	# print(y_hat.shape)
+	# print(index.shape)
+	res = np.column_stack((index, y_hat))
+	# print(res.shape)
+	np.savetxt("203050111.csv", res, fmt="%1.1f,%1.1f", header="Id,Predicted",comments="")
+	return
 
 
 def read_data():
@@ -359,10 +380,10 @@ def main():
 	max_epochs = 50
 	batch_size = 128
 
-	learning_rate = 0.001
-	num_layers = 1
-	num_units = 64
-	lamda = 0  # Regularization Parameter
+	learning_rate = 0.01
+	num_layers = 2
+	num_units = 128
+	lamda = 5.0  # Regularization Parameter
 
 	print("reading dataset...")
 	train_input, train_target, dev_input, dev_target, test_input = read_data()
@@ -387,14 +408,38 @@ def main():
 	# print("lol")
 	# sys.exit()
 
+
 	optimizer = Optimizer(learning_rate)
 	print("training neural network...")
+
+	# df = pd.read_csv('part_1b.csv', skipinitialspace=True).to_numpy()
+
+	# for row in df:
+
+	# 	learning_rate = row[0]
+	# 	print("\nLR:",learning_rate)
+	# 	num_layers = row[1].astype(int)
+	# 	print("hidden:",num_layers)
+	# 	num_units = row[2].astype(int)
+	# 	print("units:",num_units)
+	# 	lamda = row[3]
+	# 	print("lamda:",lamda)
+
+
+	# 	net = Net(num_layers, num_units)
+	# 	optimizer = Optimizer(learning_rate)
+	# 	train(
+	# 		net, optimizer, lamda, batch_size, max_epochs,
+	# 		train_input, train_target,
+	# 		dev_input, dev_target
+	# 	)
+
 	train(
-		net, optimizer, lamda, batch_size, max_epochs,
-		train_input, train_target,
-		dev_input, dev_target
-	)
-	get_test_data_predictions(net, test_input)
+			net, optimizer, lamda, batch_size, max_epochs,
+			train_input, train_target,
+			dev_input, dev_target
+		)
+	# get_test_data_predictions(net, test_input)
 
 
 if __name__ == '__main__':
